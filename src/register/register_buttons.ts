@@ -81,3 +81,37 @@ export async function registerClearScriptsOutputsButton() {
         ToolbarButtonLocation.EditorToolbar // Places the button in the toolbar above the Markdown editor
     );
 }
+
+export async function registerStrikethroughButton() {
+    const commandName = 'ParanoiaStrikethroughCommand';
+    const buttonId = 'ParanoiaStrikethroughButton';
+
+    await joplin.commands.register({
+        name: commandName,
+        label: 'Wrap selection with ~~',
+        iconName: 'fas fa-strikethrough',
+        execute: async () => {
+            const selected = await joplin.commands.execute('selectedText');
+
+            if (selected && selected.length > 0) {
+                // Wrap selection
+                await joplin.commands.execute('insertText', `~~${selected}~~`);
+            } else {
+                // No selection → insert two tildes and move cursor between them
+                await joplin.commands.execute('insertText', `~~~~`);
+                await joplin.commands.execute('editor.execCommand', {
+                    name: 'goCharLeft',
+                });
+                await joplin.commands.execute('editor.execCommand', {
+                    name: 'goCharLeft',
+                });
+            }
+        },
+    });
+
+    await joplin.views.toolbarButtons.create(
+        buttonId,
+        commandName,
+        ToolbarButtonLocation.EditorToolbar
+    );
+}

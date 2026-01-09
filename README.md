@@ -1,5 +1,11 @@
-# Joplin Plugin
-
-This is your new Joplin plugin. It is suggested that you use this README file to document your plugin.
+# Paranoia Joplin Plugin
 
 For information on how to build or publish the plugin, please see [GENERATOR_DOC.md](./GENERATOR_DOC.md)
+
+icons here: https://fontawesome.com/v5/search
+
+To build run:
+
+> npm run dist
+
+Also for dev mode joplin allows to set /dist folder for plugin
