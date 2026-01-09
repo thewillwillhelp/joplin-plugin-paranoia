@@ -6,6 +6,6 @@ icons here: https://fontawesome.com/v5/search
 
 To build run:
 
-> npm run dist
+> npm run prepare
 
 Also for dev mode joplin allows to set /dist folder for plugin
