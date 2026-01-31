@@ -1,5 +1,5 @@
 import joplin from 'api';
-import { diaflogs } from './ui';
+import { UI } from './ui';
 
 const SYNCED_FOLDER_NAME = '1. Synced';
 const SYNCED_FOLDER_NAME_NEW = '1. Synced (1)';
@@ -111,26 +111,25 @@ async function getAllResources(rootFolderId: string): Promise<any[]> {
 }
 
 export async function sync() {
-    // await diaflogs.showLogDialog();
-    await diaflogs.addLogMessage('Starting sync...');
+    UI.showMessage('Starting sync...');
 
     const syncedFolderId = await getFolderId(SYNCED_FOLDER_NAME);
     const syncedFolderNewId = await getFolderId(SYNCED_FOLDER_NAME_NEW);
 
     if (!syncedFolderId) {
-        await diaflogs.addLogMessage(
+        await UI.showMessage(
             `Error: Folder "${SYNCED_FOLDER_NAME}" not found.`
         );
         return;
     }
     if (!syncedFolderNewId) {
-        await diaflogs.addLogMessage(
+        await UI.showMessage(
             `Error: Folder "${SYNCED_FOLDER_NAME_NEW}" not found.`
         );
         return;
     }
 
-    await diaflogs.addLogMessage(
+    UI.showMessage(
         `Found folders: "${SYNCED_FOLDER_NAME}" and "${SYNCED_FOLDER_NAME_NEW}"`
     );
 
@@ -150,6 +149,8 @@ export async function sync() {
         ])
     );
 
+    const processedPaths = [];
+
     for (const [path, newResource] of syncedNewResourcesMap.entries()) {
         const oldResource = syncedResourcesMap.get(path);
 
@@ -162,6 +163,11 @@ export async function sync() {
                 newResource.created_time === oldResource.created_time
             ) {
                 console.info(`Note "${path}" is identical. Skipping.`);
+                processedPaths.push({
+                    path,
+                    status: 'identical',
+                });
+
                 continue;
             }
 
@@ -180,6 +186,12 @@ export async function sync() {
                 //     await joplin.data.delete(['notes', newResource.id]);
                 //     await diaflogs.addLogMessage(`Updated note: "${path}"`);
                 // }
+
+                processedPaths.push({
+                    path,
+                    status: 'to_be_updated',
+                });
+
                 console.warn(
                     `Note "${path}" is newer in "${SYNCED_FOLDER_NAME_NEW}", but automatic update is disabled.`
                 );
@@ -191,38 +203,71 @@ export async function sync() {
                 newResource.created_time === oldResource.created_time &&
                 newResource.updated_time < oldResource.updated_time
             ) {
-                await diaflogs.addLogMessage(
+                UI.showMessage(
                     `Note "${path}" is older. Kept in "${SYNCED_FOLDER_NAME_NEW}".`
                 );
+
+                processedPaths.push({
+                    path,
+                    status: 'both_modified',
+                });
             }
 
             // 2-4) If note from Synced (1) has another created time
             if (newResource.created_time !== oldResource.created_time) {
-                await diaflogs.addLogMessage(
+                UI.showMessage(
                     `Note "${path}" has a different creation time. Kept in both folders.`
                 );
+
+                processedPaths.push({
+                    path,
+                    status: 'names_conflict',
+                });
             }
         }
     }
 
     // 2-5) if folder is not existing in Synced (1) folder, add `__marked_to_remove` postfix to that folder in Synced and notify user
     for (const [path, oldResource] of syncedResourcesMap.entries()) {
-        if (oldResource.type === 'folder' && !syncedNewResourcesMap.has(path)) {
+        if (syncedNewResourcesMap.has(path)) {
+            continue;
+        }
+
+        const isAlreadyMarked =
+            oldResource.title.endsWith('__marked_to_remove');
+
+        if (oldResource.type === 'folder' && !isAlreadyMarked) {
             await joplin.data.put(['folders', oldResource.id], null, {
                 title: `${oldResource.title}__marked_to_remove`,
             });
-            await diaflogs.addLogMessage(
-                `Marked folder for removal: "${path}"`
-            );
+            await UI.showMessage(`Marked folder for removal: "${path}"`);
         }
 
-        if (oldResource.type === 'note' && !syncedNewResourcesMap.has(path)) {
+        if (oldResource.type === 'note' && !isAlreadyMarked) {
             await joplin.data.put(['notes', oldResource.id], null, {
                 title: `${oldResource.title}__marked_to_remove`,
             });
-            await diaflogs.addLogMessage(`Marked note for removal: "${path}"`);
+            await UI.showMessage(`Marked note for removal: "${path}"`);
         }
+
+        processedPaths.push({
+            path,
+            status: 'to_be_removed',
+        });
     }
 
-    await diaflogs.addLogMessage('Sync finished.');
+    console.log(processedPaths);
+
+    UI.showMessage(getSyncResultTable(processedPaths));
+    // await UI.showMessage('Sync finished.');
+}
+
+function getSyncResultTable(processedPaths: any[]): string {
+    let table =
+        '<h2>Sync Results</h2><table border="1" cellpadding="5" cellspacing="0"><tr><th>Path</th><th>Status</th></tr>';
+    for (const item of processedPaths) {
+        table += `<tr><td>${item.path}</td><td>${item.status}</td></tr>`;
+    }
+    table += '</table>';
+    return table;
 }

@@ -1,5 +1,5 @@
 import joplin from 'api';
-import { diaflogs } from './ui';
+import { UI } from './ui';
 import { sync } from './core';
 
 export async function registerSyncCommand() {
@@ -9,7 +9,6 @@ export async function registerSyncCommand() {
         name: commandName,
         label: 'Merge synced folders',
         execute: async () => {
-            // await diaflogs.createLogDialog();
             await sync();
         },
     });

@@ -1,15 +1,19 @@
 import joplin from 'api';
 
-export namespace diaflogs {
+export namespace UI {
     let dialog: any;
     export async function createLogDialog() {
+        if (dialog) {
+            return;
+        }
+
         dialog = await joplin.views.dialogs.create('sync-log-dialog');
         await joplin.views.dialogs.setHtml(
             dialog,
-            `
-            <div id="sync-log-content"></div>
-        `
+            `<div id="sync-log-content"></div>`
         );
+
+        window['syncLogDialog'] = dialog;
     }
 
     export async function showLogDialog() {
@@ -25,5 +29,13 @@ export namespace diaflogs {
         //     logContent.appendChild(p);
         // `);
         console.log(message);
+    }
+
+    export async function showMessage(messageContent: string) {
+        await createLogDialog();
+
+        await joplin.views.dialogs.setHtml(dialog, messageContent);
+
+        return showLogDialog();
     }
 }
