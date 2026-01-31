@@ -6,6 +6,7 @@ import {
     registerStrikethroughButton,
 } from './register/register_buttons';
 import { SettingItemType } from 'api/types';
+import { registerSyncCommand } from './sync';
 
 async function registerSettings() {
     await joplin.settings.registerSection('paranoiaPluginSection', {
@@ -41,6 +42,7 @@ async function getSettingsValues() {
 joplin.plugins.register({
     onStart: async function () {
         await registerSettings();
+        await registerSyncCommand();
 
         const isStrikethroughButtonEnabled = await getSettingsValues();
         console.info(
