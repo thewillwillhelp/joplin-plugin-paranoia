@@ -34,7 +34,6 @@ async function getAllResources(rootFolderId: string): Promise<any[]> {
                 'parent_id',
                 'created_time',
                 'updated_time',
-                // 'body',
             ],
             page: page++,
         });
@@ -176,17 +175,6 @@ export async function sync() {
                 newResource.created_time === oldResource.created_time &&
                 newResource.updated_time > oldResource.updated_time
             ) {
-                // const result = await joplin.views.dialogs.showMessageBox(
-                //     `Note "${path}" has been updated. Do you want to replace the old one?`
-                // );
-                // if (result.response === 'ok') {
-                //     await joplin.data.put(['notes', oldResource.id], null, {
-                //         body: newResource.body,
-                //     });
-                //     await joplin.data.delete(['notes', newResource.id]);
-                //     await diaflogs.addLogMessage(`Updated note: "${path}"`);
-                // }
-
                 processedPaths.push({
                     path,
                     status: 'to_be_updated',
@@ -226,16 +214,6 @@ export async function sync() {
             }
         } else {
             // 2-5) if note is not existing in Synced (1) folder, move it there
-            // await createParentFoldersIfNeeded(
-            //     path,
-            //     syncedFolderId,
-            //     syncedResourcesMap
-            // );
-
-            // await joplin.data.put(['notes'], null, {
-            //     // title: newResource.title,
-            //     parent_id: syncedFolderId,
-            // });
             UI.showMessage(`Added new folder: "${path}"`);
 
             processedPaths.push({
