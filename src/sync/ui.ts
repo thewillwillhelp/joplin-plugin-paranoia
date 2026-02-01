@@ -8,12 +8,6 @@ export namespace UI {
         }
 
         dialog = await joplin.views.dialogs.create('sync-log-dialog');
-        await joplin.views.dialogs.setHtml(
-            dialog,
-            `<div id="sync-log-content"></div>`
-        );
-
-        window['syncLogDialog'] = dialog;
     }
 
     export async function showLogDialog() {
