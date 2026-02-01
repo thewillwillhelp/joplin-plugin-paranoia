@@ -17,23 +17,17 @@ export namespace UI {
     }
 
     export async function showLogDialog() {
-        await joplin.views.dialogs.open(dialog);
+        return await joplin.views.dialogs.open(dialog);
     }
 
     export async function addLogMessage(message: string) {
-        // We are using a script to append the message to the dialog
-        // await joplin.views.dialogs.executeScript(dialog, `
-        //     const logContent = document.getElementById('sync-log-content');
-        //     const p = document.createElement('p');
-        //     p.textContent = ${JSON.stringify(message)};
-        //     logContent.appendChild(p);
-        // `);
         console.log(message);
     }
 
     export async function showMessage(messageContent: string) {
         await createLogDialog();
 
+        await joplin.views.dialogs.setFitToContent(dialog, false);
         await joplin.views.dialogs.setHtml(dialog, messageContent);
 
         return showLogDialog();

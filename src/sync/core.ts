@@ -224,30 +224,32 @@ export async function sync() {
                     status: 'names_conflict',
                 });
             }
+        } else {
+            // 2-5) if note is not existing in Synced (1) folder, move it there
+            // await createParentFoldersIfNeeded(
+            //     path,
+            //     syncedFolderId,
+            //     syncedResourcesMap
+            // );
+
+            // await joplin.data.put(['notes'], null, {
+            //     // title: newResource.title,
+            //     parent_id: syncedFolderId,
+            // });
+            UI.showMessage(`Added new folder: "${path}"`);
+
+            processedPaths.push({
+                path,
+                status: 'new_note',
+            });
         }
     }
 
-    // 2-5) if folder is not existing in Synced (1) folder, add `__marked_to_remove` postfix to that folder in Synced and notify user
+    // 2-5) if folder or note is not existing in Synced (1) folder,
+    // add `__marked_to_remove` postfix to that in Synced and notify user
     for (const [path, oldResource] of syncedResourcesMap.entries()) {
         if (syncedNewResourcesMap.has(path)) {
             continue;
-        }
-
-        const isAlreadyMarked =
-            oldResource.title.endsWith('__marked_to_remove');
-
-        if (oldResource.type === 'folder' && !isAlreadyMarked) {
-            await joplin.data.put(['folders', oldResource.id], null, {
-                title: `${oldResource.title}__marked_to_remove`,
-            });
-            await UI.showMessage(`Marked folder for removal: "${path}"`);
-        }
-
-        if (oldResource.type === 'note' && !isAlreadyMarked) {
-            await joplin.data.put(['notes', oldResource.id], null, {
-                title: `${oldResource.title}__marked_to_remove`,
-            });
-            await UI.showMessage(`Marked note for removal: "${path}"`);
         }
 
         processedPaths.push({
@@ -258,16 +260,206 @@ export async function sync() {
 
     console.log(processedPaths);
 
-    UI.showMessage(getSyncResultTable(processedPaths));
-    // await UI.showMessage('Sync finished.');
+    const decisionsForms = await UI.showMessage(
+        getSyncResultTable(processedPaths)
+    );
+
+    console.log('Decisions:', decisionsForms);
+
+    if (decisionsForms.id !== 'ok') {
+        await UI.showMessage('Sync cancelled by user.');
+        return;
+    }
+
+    for (const item of processedPaths) {
+        const newResource = syncedNewResourcesMap.get(item.path);
+        const oldResource = syncedResourcesMap.get(item.path);
+        const decisions = decisionsForms.formData['syncResultsForm'];
+        const action = decisions[item.path];
+        console.log('Processing item:', item, action, newResource, oldResource);
+
+        if (item.status === 'to_be_updated') {
+            if (action === 'accept') {
+                await joplin.data.put(['notes', oldResource.id], null, {
+                    body: newResource.body,
+                });
+                // await joplin.data.delete(['notes', newResource.id]);
+
+                UI.addLogMessage(`Updated note: "${item.path}"`);
+            } else {
+                UI.addLogMessage(`Skipped updating note: "${item.path}"`);
+            }
+        } else if (
+            item.status === 'both_modified' ||
+            item.status === 'names_conflict'
+        ) {
+            if (action === 'save_both') {
+                await joplin.data.put(['notes', newResource.id], null, {
+                    title: `${newResource.title} (new)`,
+                    parent_id: oldResource.parent_id,
+                });
+
+                UI.addLogMessage(`Kept both notes: "${item.path}"`);
+            } else if (action === 'incoming') {
+                await joplin.data.put(['notes', oldResource.id], null, {
+                    body: newResource.body,
+                });
+                // await joplin.data.delete(['notes', newResource.id]);
+
+                UI.addLogMessage(`Replaced with incoming note: "${item.path}"`);
+            } else if (action === 'current') {
+                // await joplin.data.delete(['notes', newResource.id]);
+
+                UI.addLogMessage(
+                    `Kept current note, removed incoming: "${item.path}"`
+                );
+            }
+        } else if (item.status === 'to_be_removed') {
+            if (action === 'skip') {
+                continue;
+            }
+
+            if (action === 'mark') {
+                const isAlreadyMarked =
+                    oldResource.title.endsWith('__marked_to_remove');
+                if (isAlreadyMarked) {
+                    continue;
+                }
+
+                if (oldResource.type === 'note') {
+                    await joplin.data.put(['notes', oldResource.id], null, {
+                        title: `${oldResource.title}__marked_to_remove`,
+                    });
+                } else if (oldResource.type === 'folder') {
+                    await joplin.data.put(['folders', oldResource.id], null, {
+                        title: `${oldResource.title}__marked_to_remove`,
+                    });
+                }
+
+                UI.addLogMessage(`Marked for removal: "${item.path}"`);
+            } else if (action === 'accept') {
+                if (oldResource.type === 'note') {
+                    await joplin.data.delete(['notes', oldResource.id]);
+                } else if (oldResource.type === 'folder') {
+                    await joplin.data.delete(['folders', oldResource.id]);
+                }
+
+                UI.addLogMessage(`Removed: "${item.path}"`);
+            }
+        } else if (item.status === 'new_note') {
+            const parentId = await createParentFoldersIfNeeded(
+                item.path,
+                syncedFolderId,
+                syncedResourcesMap
+            );
+
+            await joplin.data.post(['notes'], null, {
+                title: newResource.title,
+                parent_id: parentId,
+                body: newResource.body,
+            });
+            UI.addLogMessage(`Added new note: "${item.path}"`);
+        }
+    }
+
+    await joplin.data.delete(['folders', syncedFolderNewId]);
+    await UI.showMessage('Sync finished.');
+}
+
+async function createParentFoldersIfNeeded(
+    path: string,
+    syncedFolderId: string,
+    syncedResourcesMap: Map<string, any>
+): Promise<string> {
+    const pathParts = path.split('/');
+    pathParts.pop(); // Remove the note name
+
+    let currentPath = '';
+    let parentId = syncedFolderId;
+
+    for (const part of pathParts) {
+        currentPath += `${part}/`;
+        const folderPath = currentPath.slice(0, -1); // Remove trailing slash
+
+        let folderResource = syncedResourcesMap.get(folderPath);
+        if (!folderResource) {
+            // Create the folder
+            console.log('want to create folder:', folderPath);
+
+            const newFolder = await joplin.data.post(['folders'], null, {
+                title: part,
+                parent_id: parentId,
+            });
+
+            folderResource = {
+                id: newFolder.id,
+                title: part,
+                parent_id: parentId,
+                type: 'folder',
+                path: folderPath,
+            };
+            syncedResourcesMap.set(folderPath, folderResource);
+        }
+
+        parentId = folderResource.id;
+    }
+    return parentId;
+}
+
+function getStatusColor(status: string): string {
+    switch (status) {
+        case 'identical':
+        case 'new_note':
+            return 'green';
+        case 'to_be_updated':
+        case 'names_conflict':
+            return 'amber';
+        case 'both_modified':
+        case 'to_be_removed':
+            return 'red';
+        default:
+            return 'white';
+    }
+}
+
+function getActionHtml(status: string, path: string): string {
+    switch (status) {
+        case 'to_be_updated':
+            return `
+                <label><input type="radio" name="${path}" value="accept" checked> Accept</label>
+                <label><input type="radio" name="${path}" value="skip"> Skip</label>
+            `;
+        case 'both_modified':
+        case 'names_conflict':
+            return `
+                <label><input type="radio" name="${path}" value="save_both" checked> Save both</label>
+                <label><input type="radio" name="${path}" value="incoming"> Incoming</label>
+                <label><input type="radio" name="${path}" value="current"> Current</label>
+            `;
+        case 'to_be_removed':
+            return `
+                <label><input type="radio" name="${path}" value="mark" checked> Mark</label>
+                <label><input type="radio" name="${path}" value="skip"> Skip</label>
+                <label><input type="radio" name="${path}" value="accept"> Accept</label>
+            `;
+        default:
+            return 'no actions required';
+    }
 }
 
 function getSyncResultTable(processedPaths: any[]): string {
-    let table =
-        '<h2>Sync Results</h2><table border="1" cellpadding="5" cellspacing="0"><tr><th>Path</th><th>Status</th></tr>';
+    let table = `<h2>Sync Results</h2>
+        <form name="syncResultsForm">
+            <table border="1" cellpadding="5" cellspacing="0">
+                <tr><th>Path</th><th>Status</th><th>Actions</th>
+        </tr>`;
     for (const item of processedPaths) {
-        table += `<tr><td>${item.path}</td><td>${item.status}</td></tr>`;
+        table += `<tr>
+            <td>${item.path}</td>
+            <td><span style="color:${getStatusColor(item.status)}">${item.status}</span></td>
+            <td>${getActionHtml(item.status, item.path)}</td>
+        </tr>`;
     }
-    table += '</table>';
+    table += '</table></form>';
     return table;
 }
